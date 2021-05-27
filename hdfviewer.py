@@ -10,12 +10,9 @@ Created on Sun May  9 17:33:55 2021
 # --------------------------------------------- --------- 
 from  PyQt5.QtWidgets  import QMainWindow, QApplication, QTreeWidgetItem, QFileDialog
 from  PyQt5.uic  import  loadUi
-from PyQt5.QtCore import Qt, QAbstractTableModel#QObject, pyqtSignal, QRunnable, QThreadPool#, pyqtSlot
-#from PyQt5.QtGui import QFont
-#import time
-import  numpy  as  np 
-#import  random
+from PyQt5.QtCore import Qt, QAbstractTableModel
 import h5py
+from functools import reduce
 
 class TableModel(QAbstractTableModel):
     def __init__(self, data):
@@ -54,14 +51,20 @@ class Window(QMainWindow):
         fileName, _ = QFileDialog.getOpenFileName(self, "Load HDF file", "",
                                                   "HDF files (*.hdf, *.hdf5);;All files (*.*)", options=options)
         if fileName:
-            f = h5py.File(fileName, "r")
-            self.f = f
-            self.s = Window.hdfanalyse(f)
-            self.treeWidget.setColumnCount(2)
-            self.treeWidget.setHeaderLabels(['key', 'shape'])
-            self.addRow(self.s, self.treeWidget)
-            self.treeWidget.itemClicked.connect(self.showData)
-            
+            try:
+                f = h5py.File(fileName, "r")
+                self.lblFileName.setText(fileName.split('/')[-1])
+                self.lblFileName.setStyleSheet("color:#377eb8;")
+                self.f = f
+                self.s = Window.hdfanalyse(f)
+                self.treeWidget.clear()
+                self.treeWidget.setColumnCount(2)
+                self.treeWidget.setHeaderLabels(['key', 'shape'])
+                self.addRow(self.s, self.treeWidget)
+                self.treeWidget.itemClicked.connect(self.showData)
+            except OSError:
+                self.lblFileName.setText("Not a valid HDF5 file")
+                self.lblFileName.setStyleSheet("color:#e41a1c;")
     
     def addRow(self, x, parent):
         if self.cboxLimit.isChecked():
@@ -81,19 +84,17 @@ class Window(QMainWindow):
     def showData(self):
         w = self.treeWidget.currentItem()
         if w.childCount() == 0:
+            # Get hierarchy of keys for clicked element
             keys = []
             while not w is None:
                 keys.append(w.data(0,0))
                 w = w.parent()
-            keys = keys[::-1]
-            data = self.f[keys[0]]
-            for key in keys[1:]:
-                data = data[key]
-            data = data[()]
+            # Get the element following the list of keys in the reverse order
+            data = reduce(lambda x, y: x[y], keys[::-1], self.f)[()]
             if data.ndim == 1:
                 data = data[:, None]
             elif data.ndim == 0:
-                data = np.array([[data]])
+                data = data[None, None]
             self.model = TableModel(data.tolist())
             self.tableView.setModel(self.model)
             
@@ -104,7 +105,7 @@ class Window(QMainWindow):
         for key in keys:
             if isinstance(file[key], h5py.Dataset):
                 if file[key].ndim == 0:
-                    s[key] = (1, 1)
+                    s[key] = (1, )
                 else:
                     s[key] = file[key].shape
             elif isinstance(file[key], h5py.Group):
@@ -114,7 +115,6 @@ class Window(QMainWindow):
     def closeEvent(self, event):
         # then stop the app
         event.accept()
-        
         
 app = QApplication([]) 
 window = Window() 
