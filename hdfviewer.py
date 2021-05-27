@@ -37,7 +37,7 @@ class TableModel(QAbstractTableModel):
         return len(self._data[0])
         #return self._data.shape[1]
             
-class Window(QMainWindow):
+class HdfViewer(QMainWindow):
     
     def  __init__(self):
         QMainWindow.__init__(self)
@@ -56,7 +56,7 @@ class Window(QMainWindow):
                 self.lblFileName.setText(fileName.split('/')[-1])
                 self.lblFileName.setStyleSheet("color:#377eb8;")
                 self.f = f
-                self.s = Window.hdfanalyse(f)
+                self.s = HdfViewer.hdfanalyse(f)
                 self.treeWidget.clear()
                 self.treeWidget.setColumnCount(2)
                 self.treeWidget.setHeaderLabels(['key', 'shape'])
@@ -75,6 +75,7 @@ class Window(QMainWindow):
             w = QTreeWidgetItem(parent)
             w.setText(0, key)
             if not type(x[key]) is tuple:
+                w.setText(1, str(len(x[key].keys())))
                 self.addRow(x[key], w)
                 w.setExpanded(False)
             else:
@@ -90,13 +91,16 @@ class Window(QMainWindow):
                 keys.append(w.data(0,0))
                 w = w.parent()
             # Get the element following the list of keys in the reverse order
-            data = reduce(lambda x, y: x[y], keys[::-1], self.f)[()]
-            if data.ndim == 1:
-                data = data[:, None]
-            elif data.ndim == 0:
-                data = data[None, None]
-            self.model = TableModel(data.tolist())
-            self.tableView.setModel(self.model)
+            try:
+                data = reduce(lambda x, y: x[y], keys[::-1], self.f)[()]
+                if data.ndim == 1:
+                    data = data[:, None]
+                elif data.ndim == 0:
+                    data = data[None, None]
+                self.model = TableModel(data.tolist())
+                self.tableView.setModel(self.model)
+            except AttributeError:
+                pass
             
     @staticmethod
     def hdfanalyse(file):
@@ -109,7 +113,7 @@ class Window(QMainWindow):
                 else:
                     s[key] = file[key].shape
             elif isinstance(file[key], h5py.Group):
-                s[key] = Window.hdfanalyse(file[key])
+                s[key] = HdfViewer.hdfanalyse(file[key])
         return s
 
     def closeEvent(self, event):
@@ -117,7 +121,7 @@ class Window(QMainWindow):
         event.accept()
         
 app = QApplication([]) 
-window = Window() 
+window = HdfViewer() 
 
 
 window.show() 
