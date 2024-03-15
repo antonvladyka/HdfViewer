@@ -5,14 +5,10 @@ Created on Sun May  9 17:33:55 2021
 @author: anvlad
 """
 
-# ------------------------------------------------- ----- 
-# ---------------------- main.py ------------------- ---- 
-# --------------------------------------------- --------- 
-from  PyQt5.QtWidgets  import QMainWindow, QApplication, QTreeWidgetItem, QFileDialog
-from  PyQt5.uic  import  loadUi
+from PyQt5.QtWidgets import QMainWindow, QApplication, QTreeWidgetItem, QFileDialog
+from PyQt5.uic import loadUi
 from PyQt5.QtCore import Qt, QAbstractTableModel
 import h5py
-from functools import reduce
 
 class TableModel(QAbstractTableModel):
     def __init__(self, data):
@@ -29,34 +25,35 @@ class TableModel(QAbstractTableModel):
     def rowCount(self, index):
         # The length of the outer list.
         return len(self._data)
-        #return self._data.shape[0]
-
+        
     def columnCount(self, index):
         # The following takes the first sub-list, and returns
         # the length (only works if all rows are an equal length)
         return len(self._data[0])
-        #return self._data.shape[1]
-            
+        
+
 class HdfViewer(QMainWindow):
     
     def  __init__(self):
         QMainWindow.__init__(self)
         loadUi("hdfviewer.ui" , self)
         self.btnOpen.clicked.connect(self.open)
-        
     
     def open(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
         fileName, _ = QFileDialog.getOpenFileName(self, "Load HDF file", "",
-                                                  "HDF files (*.hdf, *.hdf5);;All files (*.*)", options=options)
+                                                  "HDF files (*.hdf *.hdf5);;All files (*.*)", options=options)
         if fileName:
             try:
                 f = h5py.File(fileName, "r")
                 self.lblFileName.setText(fileName.split('/')[-1])
                 self.lblFileName.setStyleSheet("color:#377eb8;")
                 self.f = f
-                self.s = HdfViewer.hdfanalyse(f)
+                if self.cboxLimit.isChecked():
+                    self.s = HdfViewer.hdfanalyse(f, limit=True)
+                else:
+                    self.s = HdfViewer.hdfanalyse(f, limit=False)
                 self.treeWidget.clear()
                 self.treeWidget.setColumnCount(2)
                 self.treeWidget.setHeaderLabels(['key', 'shape'])
@@ -67,11 +64,8 @@ class HdfViewer(QMainWindow):
                 self.lblFileName.setStyleSheet("color:#e41a1c;")
     
     def addRow(self, x, parent):
-        if self.cboxLimit.isChecked():
-            keys = list(x.keys())[:100]
-        else:
-            keys = list(x.keys())
-        for key in keys:
+        keys = list(x.keys())
+        for idx, key in enumerate(keys):
             w = QTreeWidgetItem(parent)
             w.setText(0, key)
             if not type(x[key]) is tuple:
@@ -92,7 +86,8 @@ class HdfViewer(QMainWindow):
                 w = w.parent()
             # Get the element following the list of keys in the reverse order
             try:
-                data = reduce(lambda x, y: x[y], keys[::-1], self.f)[()]
+                path = '/' + '/'.join(keys[::-1])
+                data = self.f[path][()]
                 if data.ndim == 1:
                     data = data[:, None]
                 elif data.ndim == 0:
@@ -103,8 +98,11 @@ class HdfViewer(QMainWindow):
                 pass
             
     @staticmethod
-    def hdfanalyse(file):
-        keys = file.keys()
+    def hdfanalyse(file, limit=False):
+        if limit:
+            keys = list(file.keys())[:100]
+        else:
+            keys = file.keys()
         s = {}
         for key in keys:
             if isinstance(file[key], h5py.Dataset):
@@ -113,10 +111,14 @@ class HdfViewer(QMainWindow):
                 else:
                     s[key] = file[key].shape
             elif isinstance(file[key], h5py.Group):
-                s[key] = HdfViewer.hdfanalyse(file[key])
+                s[key] = HdfViewer.hdfanalyse(file[key], limit=limit)
         return s
 
     def closeEvent(self, event):
+        try:
+            self.f.close()
+        except:
+            pass
         # then stop the app
         event.accept()
         
